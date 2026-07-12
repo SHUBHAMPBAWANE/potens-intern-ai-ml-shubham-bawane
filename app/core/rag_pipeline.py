@@ -69,7 +69,9 @@ class RAGPipeline:
         logger.info("Chunking %d document(s).", len(documents))
         chunks = chunk_documents(documents)
         logger.info("Generating embeddings.")
-        embeddings = self.embedding_service.embed_documents(chunks)
+        texts = [chunk.page_content for chunk in chunks]
+
+        embeddings = self.embedding_service.embed_documents(texts)
         logger.info("Persisting embeddings to vector store.")
         self.vector_store.add_documents(
             chunks,

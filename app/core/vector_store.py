@@ -197,6 +197,37 @@ class VectorStoreService:
             raise VectorStoreOperationError(
                 f"Unable to count vectors: {exc}"
             ) from exc
+        
+    def query(
+        self,
+        query_embedding: list[float],
+        top_k: int = 5,
+    ) -> dict:
+        """
+        Query the vector store using a query embedding.
+
+        Args:
+            query_embedding:
+                Embedding vector representing the user's query.
+
+            top_k:
+                Maximum number of similar documents to return.
+
+        Returns:
+            Raw ChromaDB query response.
+        """
+
+        try:
+            return self._collection.query(
+                query_embeddings=[query_embedding],
+                n_results=top_k,
+                include=["documents", "metadatas", "distances"],
+            )
+
+        except Exception as exc:
+            raise VectorStoreOperationError(
+                f"Unable to query vector store: {exc}"
+            ) from exc
 
     def reset(self) -> None:
         """
@@ -233,3 +264,5 @@ class VectorStoreService:
             "Collection '%s' reset successfully.",
             self.collection_name,
         )
+
+    
