@@ -25,6 +25,7 @@ from app.core.embeddings import EmbeddingService
 from app.core.vector_store import VectorStoreService
 from app.core.retriever_service import RetrieverService
 from app.core.llm_service import LLMService
+from app.core.translation import TranslationService
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,8 @@ class RAGPipeline:
 
         # Gemini LLM
         self.llm_service = LLMService()
+
+        self.translation_service = TranslationService()
 
         logger.info("RAG Pipeline initialized successfully.")
 
@@ -214,12 +217,46 @@ class RAGPipeline:
         )
 
         # --------------------------------------------------------
+        # 1. Detect user's language
+        # --------------------------------------------------------
+
+        original_language = (
+            self.translation_service.detect_language(question)
+        )
+
+        logger.info(
+            "Detected language: %s",
+            original_language,
+        )
+
+        # --------------------------------------------------------
+        # 2. Translate question to English if necessary
+        # --------------------------------------------------------
+
+        retrieval_question = question
+
+        if original_language.lower() != "english":
+
+            retrieval_question = (
+                self.translation_service.translate(
+                    text=question,
+                    target_language="English",
+                    source_language=original_language,
+                )
+            )
+
+            logger.info(
+                "Translated question for retrieval: %s",
+                retrieval_question,
+            )
+
+        # --------------------------------------------------------
         # 1. Convert question into embedding
         # --------------------------------------------------------
 
         query_embedding = (
             self.embedding_service.embed_query(
-                question
+                retrieval_question
             )
         )
 
@@ -280,9 +317,20 @@ Content:
         # --------------------------------------------------------
 
         answer = self.llm_service.generate(
-            question=question,
+            question=retrieval_question,
             context=context,
         )
+                # --------------------------------------------------------
+        # Translate answer back to user's language
+        # --------------------------------------------------------
+
+        if original_language.lower() != "english":
+
+            answer = self.translation_service.translate(
+                text=answer,
+                target_language=original_language,
+                source_language="English",
+            )
 
         # --------------------------------------------------------
         # 5. Build citations
@@ -312,8 +360,9 @@ Content:
         # --------------------------------------------------------
 
         return {
-            "question": question,
-            "answer": answer,
-            "sources": sources,
-            "results": retrieved_results,
-        }
+        "question": question,
+        "language": original_language,
+        "answer": answer,
+        "sources": sources,
+        "results": retrieved_results,
+    }
