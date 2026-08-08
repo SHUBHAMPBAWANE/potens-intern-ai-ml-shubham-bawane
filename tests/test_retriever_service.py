@@ -4,7 +4,7 @@ Test RetrieverService.
 
 from app.core.embeddings import EmbeddingService
 from app.core.rag_pipeline import RAGPipeline
-from app.core.retriever_service import RetrieverService
+from app.core.retriever_service import RetrievalResult, RetrieverService
 
 
 def main():
@@ -54,16 +54,10 @@ def main():
         )
 
         print(
-            f"Quality    : {retriever.similarity_label(result.similarity_score)}"
-        )
+        f"Quality    : {RetrievalResult.similarity_label(result.similarity_score)}"
+    )
 
-        print(
-            f"Source: {result.document.metadata.get('source')}"
-        )
-
-        print(
-            f"Page: {result.document.metadata.get('page')}"
-        )
+        print(f"Citation  : {result.citation}")
 
         print("\nPreview:")
 

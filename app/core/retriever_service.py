@@ -34,26 +34,31 @@ class RetrievalResult:
 
     distance: float
 
-@staticmethod
-def similarity_label(score: float) -> str:
-    """
-    Convert a similarity score into a human-readable label.
-    """
 
-    if score >= 0.90:
-        return "Excellent"
+    @property
+    def citation(self) -> str:
+        source = self.document.metadata.get("source", "Unknown")
+        page = self.document.metadata.get("page", "?")
+        return f"{source} (Page {page})"
 
-    if score >= 0.75:
-        return "Good"
 
-    if score >= 0.60:
-        return "Fair"
+    @staticmethod
+    def similarity_label(score: float) -> str:
+        """
+        Convert a similarity score into a human-readable label.
+        """
 
-    return "Weak"
-@property
-def citation(self) -> str:
-    return f"{self.document.metadata['source']} (Page {self.document.metadata['page']})"
+        if score >= 0.90:
+            return "Excellent"
 
+        if score >= 0.75:
+            return "Good"
+
+        if score >= 0.60:
+            return "Fair"
+
+        return "Weak"
+    
 class RetrieverService:
     """
     Semantic retriever built on top of the vector store.
@@ -126,19 +131,3 @@ class RetrieverService:
         )
 
         return results
-    @staticmethod
-    def similarity_label(score: float) -> str:
-        """
-        Convert a similarity score into a human-readable label.
-        """
-
-        if score >= 0.90:
-            return "Excellent"
-
-        if score >= 0.75:
-            return "Good"
-
-        if score >= 0.60:
-            return "Fair"
-
-        return "Weak"
