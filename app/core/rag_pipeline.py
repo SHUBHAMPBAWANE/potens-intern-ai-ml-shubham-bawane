@@ -26,6 +26,9 @@ from app.core.vector_store import VectorStoreService
 from app.core.retriever_service import RetrieverService
 from app.core.llm_service import LLMService
 from app.core.translation import TranslationService
+from app.core.contradiction_detection import (
+    ContradictionDetectionService,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +62,8 @@ class RAGPipeline:
         self.llm_service = LLMService()
 
         self.translation_service = TranslationService()
+
+        self.contradiction_service = ContradictionDetectionService()
 
         logger.info("RAG Pipeline initialized successfully.")
 
@@ -185,23 +190,29 @@ class RAGPipeline:
         question: str,
     ) -> dict[str, Any]:
         """
-        Answer a user question using the RAG pipeline.
+        Answer a user question using the complete RAG pipeline.
 
         Workflow:
 
         Question
             ↓
+        Language Detection
+            ↓
+        Translation to English
+            ↓
         Query Embedding
             ↓
         Semantic Retrieval
             ↓
-        Relevant Chunks
+        Contradiction Detection
             ↓
-        Context
+        Context Building
             ↓
-        Gemini
+        Gemini Answer
             ↓
-        Final Answer
+        Translate Answer Back
+            ↓
+        Final Response
         """
 
         if not question or not question.strip():
@@ -209,59 +220,62 @@ class RAGPipeline:
                 "Question cannot be empty."
             )
 
-        question = question.strip()
+        original_question = question.strip()
 
         logger.info(
             "Processing question: %s",
-            question,
+            original_question,
         )
 
         # --------------------------------------------------------
-        # 1. Detect user's language
+        # 1. Detect language
         # --------------------------------------------------------
 
-        original_language = (
-            self.translation_service.detect_language(question)
+        detected_language = (
+            self.translation_service.detect_language(
+                original_question
+            )
         )
 
         logger.info(
             "Detected language: %s",
-            original_language,
+            detected_language,
         )
 
         # --------------------------------------------------------
-        # 2. Translate question to English if necessary
+        # 2. Translate question to English if required
         # --------------------------------------------------------
 
-        retrieval_question = question
+        if detected_language.lower() != "english":
 
-        if original_language.lower() != "english":
-
-            retrieval_question = (
+            translated_question = (
                 self.translation_service.translate(
-                    text=question,
+                    text=original_question,
                     target_language="English",
-                    source_language=original_language,
+                    source_language=detected_language,
                 )
             )
 
-            logger.info(
-                "Translated question for retrieval: %s",
-                retrieval_question,
-            )
+        else:
+            translated_question = original_question
+
+        logger.info(
+            "Question used for retrieval: %s",
+            translated_question,
+        )
 
         # --------------------------------------------------------
-        # 1. Convert question into embedding
+        # 3. Convert question into embedding
         # --------------------------------------------------------
 
         query_embedding = (
             self.embedding_service.embed_query(
-                retrieval_question
+                translated_question
             )
         )
 
         # --------------------------------------------------------
-        # 2. Retrieve relevant chunks
+        # 4. Retrieve relevant chunks
         # --------------------------------------------------------
 
         retrieved_results = (
@@ -272,22 +286,43 @@ class RAGPipeline:
         )
 
         if not retrieved_results:
+
             logger.warning(
                 "No relevant documents found."
             )
 
             return {
-                "question": question,
+                "question": original_question,
+                "language": detected_language,
                 "answer": (
                     "I could not find relevant "
                     "information in the provided documents."
                 ),
                 "sources": [],
+                "contradiction": {
+                    "has_contradiction": False,
+                    "explanation": "No documents were retrieved.",
+                },
                 "results": [],
             }
 
         # --------------------------------------------------------
-        # 3. Build context for Gemini
+        # 5. Detect contradictions
+        # --------------------------------------------------------
+
+        retrieved_texts = [
+            result.document.page_content
+            for result in retrieved_results
+        ]
+
+        contradiction_result = (
+            self.contradiction_service.detect(
+                retrieved_texts
+            )
+        )
+
+        # --------------------------------------------------------
+        # 6. Build context for Gemini
         # --------------------------------------------------------
 
         context_parts = []
@@ -299,13 +334,13 @@ class RAGPipeline:
 
             context_parts.append(
                 f"""
-SOURCE {index}
-Citation: {result.citation}
-Similarity: {result.similarity_score:.3f}
+    SOURCE {index}
+    Citation: {result.citation}
+    Similarity: {result.similarity_score:.3f}
 
-Content:
-{result.document.page_content}
-""".strip()
+    Content:
+    {result.document.page_content}
+    """.strip()
             )
 
         context = "\n\n".join(
@@ -313,27 +348,30 @@ Content:
         )
 
         # --------------------------------------------------------
-        # 4. Send context + question to Gemini
+        # 7. Generate answer using Gemini
         # --------------------------------------------------------
 
         answer = self.llm_service.generate(
-            question=retrieval_question,
+            question=translated_question,
             context=context,
         )
-                # --------------------------------------------------------
-        # Translate answer back to user's language
+
+        # --------------------------------------------------------
+        # 8. Translate answer back to original language
         # --------------------------------------------------------
 
-        if original_language.lower() != "english":
+        if detected_language.lower() != "english":
 
-            answer = self.translation_service.translate(
-                text=answer,
-                target_language=original_language,
-                source_language="English",
+            answer = (
+                self.translation_service.translate(
+                    text=answer,
+                    target_language=detected_language,
+                    source_language="English",
+                )
             )
 
         # --------------------------------------------------------
-        # 5. Build citations
+        # 9. Build citations
         # --------------------------------------------------------
 
         sources = []
@@ -356,13 +394,15 @@ Content:
             )
 
         # --------------------------------------------------------
-        # 6. Return complete response
+        # 10. Return complete response
         # --------------------------------------------------------
 
         return {
-        "question": question,
-        "language": original_language,
-        "answer": answer,
-        "sources": sources,
-        "results": retrieved_results,
-    }
+            "question": original_question,
+            "language": detected_language,
+            "answer": answer,
+            "sources": sources,
+            "contradiction": contradiction_result,
+            "results": retrieved_results,
+            }
+       

@@ -19,3 +19,10 @@ class QuestionResponse(BaseModel):
     question: str
     answer: str
     sources: list[SourceResponse]
+
+class AskResponse(BaseModel):
+    question: str
+    language: str
+    answer: str
+    sources: list
+    contradiction: dict

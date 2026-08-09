@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.api.schemas import (
     QuestionRequest,
-    QuestionResponse,
+    AskResponse,
 )
 from app.core.rag_pipeline import RAGPipeline
 
@@ -21,21 +21,23 @@ pipeline = RAGPipeline(
 
 @router.post(
     "/ask",
-    response_model=QuestionResponse,
+    response_model=AskResponse,
 )
 def ask_question(
     request: QuestionRequest,
-) -> QuestionResponse:
+) -> AskResponse:
 
     try:
         result = pipeline.ask(
             request.question
         )
 
-        return QuestionResponse(
+        return AskResponse(
             question=result["question"],
+            language=result["language"],
             answer=result["answer"],
             sources=result["sources"],
+            contradiction=result["contradiction"],
         )
 
     except Exception as exc:
