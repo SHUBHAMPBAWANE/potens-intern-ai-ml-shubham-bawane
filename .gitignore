@@ -22,3 +22,6 @@ data/
 .DS_Store
 Thumbs.db
 
+# Uploaded RAG Documents
+docs/*
+!docs/.gitkeep
