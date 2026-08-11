@@ -7,6 +7,7 @@ whether they contain conflicting information.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 
@@ -118,7 +119,53 @@ Documents:
                     "Gemini returned an empty contradiction detection result."
                 )
 
-            return result.strip()
+            result = result.strip()
+
+            # Remove Markdown JSON code fences if Gemini adds them.
+            if result.startswith("```json"):
+                result = result[len("```json"):].strip()
+
+            elif result.startswith("```"):
+                result = result[3:].strip()
+
+            if result.endswith("```"):
+                result = result[:-3].strip()
+
+            # Convert Gemini's JSON string into a Python dictionary.
+            try:
+                contradiction_result = json.loads(result)
+
+            except json.JSONDecodeError as exc:
+                logger.error(
+                    "Invalid JSON returned by Gemini: %s",
+                    result,
+                )
+
+                raise ValueError(
+                    "Gemini returned invalid JSON for contradiction detection."
+                ) from exc
+
+            # Make sure the result is actually a dictionary.
+            if not isinstance(
+                contradiction_result,
+                dict,
+            ):
+                raise ValueError(
+                    "Contradiction detection result must be a dictionary."
+                )
+
+            # Validate expected fields.
+            if "has_contradiction" not in contradiction_result:
+                raise ValueError(
+                    "Contradiction result is missing 'has_contradiction'."
+                )
+
+            if "explanation" not in contradiction_result:
+                raise ValueError(
+                    "Contradiction result is missing 'explanation'."
+                )
+
+            return contradiction_result
 
         except Exception as exc:
             logger.exception(
